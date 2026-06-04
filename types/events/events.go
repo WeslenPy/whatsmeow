@@ -621,3 +621,23 @@ type NewsletterLiveUpdate struct {
 	Time     time.Time
 	Messages []*types.NewsletterMessage
 }
+
+
+// IQError is emitted whenever an info query (IQ) response returns an
+// error status. It is emitted in addition to the error being returned
+// by the original sendIQ caller, so observers (e.g. webhook handlers)
+// can react to IQ errors that would otherwise only surface to the
+// direct caller. The most common useful case is reacting to server-side
+// throttling/restriction codes like 463 (account_reachout_restricted).
+type IQError struct {
+	// Code is the numeric error code (e.g. 463 for account_reachout_restricted).
+	Code int
+	// Text is the human-readable error tag (e.g. "account_reachout_restricted").
+	Text string
+	// From is the server JID that returned the error (e.g. "g.us", "s.whatsapp.net").
+	From types.JID
+	// ID is the IQ request id this error responds to.
+	ID string
+	// XMLString is the raw XML representation of the error <iq> node, useful for debugging.
+	XMLString string
+}

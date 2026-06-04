@@ -14,6 +14,7 @@ import (
 
 	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 )
 
 func (cli *Client) generateRequestID() string {
@@ -149,6 +150,34 @@ func (cli *Client) sendIQAsync(ctx context.Context, query infoQuery) (<-chan *wa
 
 const defaultRequestTimeout = 75 * time.Second
 
+// emitIQErrorEvent dispatches an events.IQError so external observers
+// (the app's event handler / webhook layer) can react to IQ errors that
+// would otherwise only be visible to the direct sendIQ caller.
+func (cli *Client) emitIQErrorEvent(res *waBinary.Node, iqErr error) {
+	if cli == nil || res == nil {
+		return
+	}
+	parsed, ok := iqErr.(*IQError)
+	if !ok || parsed == nil {
+		return
+	}
+	from, _ := res.Attrs["from"].(string)
+	id, _ := res.Attrs["id"].(string)
+	var fromJID types.JID
+	if from != "" {
+		if jid, err := types.ParseJID(from); err == nil {
+			fromJID = jid
+		}
+	}
+	go cli.dispatchEvent(&events.IQError{
+		Code:      parsed.Code,
+		Text:      parsed.Text,
+		From:      fromJID,
+		ID:        id,
+		XMLString: res.XMLString(),
+	})
+}
+
 func (cli *Client) sendIQ(ctx context.Context, query infoQuery) (*waBinary.Node, error) {
 	if query.Timeout == 0 {
 		query.Timeout = defaultRequestTimeout
@@ -172,7 +201,9 @@ func (cli *Client) sendIQ(ctx context.Context, query infoQuery) (*waBinary.Node,
 		if res.Tag != "iq" || (resType != "result" && resType != "error") {
 			return res, &IQError{RawNode: res}
 		} else if resType == "error" {
-			return res, parseIQError(res)
+			iqErr := parseIQError(res)
+			cli.emitIQErrorEvent(res, iqErr)
+			return res, iqErr
 		}
 		return res, nil
 	case <-ctx.Done():
