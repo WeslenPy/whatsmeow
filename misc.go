@@ -32,10 +32,10 @@ func (cli *Client) ReachoutTimeoutLock(ctx context.Context) (types.ReachoutTimeo
 	return respData.ReachoutTimeoutLock, err
 }
 
-func (cli *Client) BizIntegrity(ctx context.Context, jids []string) (types.BizIntegrity, error) {
+func (cli *Client) BizIntegrity(ctx context.Context, queryInput []map[string]string) (types.BizIntegrity, error) {
 	data, err := cli.sendMexIQ(ctx, fetchBizIntegrityQuery, map[string]any{
 		"input": map[string]any{
-			"query_input": jids,
+			"query_input": queryInput,
 			"telemetry": map[string]any{
 				"context": "INTERACTIVE",
 			},
