@@ -43,6 +43,7 @@ const (
 	mutationFollowNewsletterDesktop    = "8621797084555037"
 
 	fetchReachoutTimelockQuery = "9462376090546244"
+	fetchBizIntegrityQuery     = "9952408304882625"
 )
 
 func convertQueryID(cli *Client, queryID string) string {
@@ -70,6 +71,8 @@ func convertQueryID(cli *Client, queryID string) string {
 			return mutationFollowNewsletterDesktop
 		case fetchReachoutTimelockQuery:
 			return fetchReachoutTimelockQuery
+		case fetchBizIntegrityQuery:
+			return fetchBizIntegrityQuery
 		default:
 			return queryID
 		}

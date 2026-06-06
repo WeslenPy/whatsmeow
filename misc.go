@@ -31,3 +31,23 @@ func (cli *Client) ReachoutTimeoutLock(ctx context.Context) (types.ReachoutTimeo
 	}
 	return respData.ReachoutTimeoutLock, err
 }
+
+func (cli *Client) BizIntegrity(ctx context.Context, jids []string) (types.BizIntegrity, error) {
+	data, err := cli.sendMexIQ(ctx, fetchBizIntegrityQuery, map[string]any{
+		"input": map[string]any{
+			"query_input": jids,
+			"telemetry": map[string]any{
+				"context": "INTERACTIVE",
+			},
+		},
+	})
+
+	var respData types.BizIntegrity
+	if data != nil {
+		jsonErr := json.Unmarshal(data, &respData)
+		if err == nil && jsonErr != nil {
+			err = jsonErr
+		}
+	}
+	return respData, err
+}
