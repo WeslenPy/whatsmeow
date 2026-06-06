@@ -6,5 +6,5 @@ type ReachoutTimeoutLock struct {
 }
 
 type BizIntegrity struct {
-	BizIntegrity any `json:"wa2_fetch_wa_users"`
+	BizIntegrity any `json:"xwa2_fetch_wa_users"`
 }

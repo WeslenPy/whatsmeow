@@ -14,7 +14,7 @@ import (
 )
 
 type respReachoutTimeoutLock struct {
-	ReachoutTimeoutLock types.ReachoutTimeoutLock `json:"a2_fetch_account_reachout_timelock"`
+	ReachoutTimeoutLock types.ReachoutTimeoutLock `json:"xwa2_fetch_account_reachout_timelock"`
 }
 
 func (cli *Client) ReachoutTimeoutLock(ctx context.Context) (types.ReachoutTimeoutLock, error) {
