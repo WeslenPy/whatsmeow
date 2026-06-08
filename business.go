@@ -206,49 +206,8 @@ func (cli *Client) GetCatalogProductsBusiness(ctx context.Context, jid types.JID
 	})
 }
 
-// ProductImage represents an image of a catalog product.
-//
-// Provide either a URL that is already hosted on WhatsApp's servers (a URL
-// containing ".whatsapp.net"), in which case it is used as-is, or the raw image
-// bytes in Data, which will be uploaded to WhatsApp's catalog image servers.
-type ProductImage struct {
-	URL  string
-	Data []byte
-}
-
-// ProductCreate contains the data required to create a catalog product.
-type ProductCreate struct {
-	Name        string
-	Description string
-	RetailerID  string
-	Price       int64
-	Currency    string
-	IsHidden    bool
-	Images      []ProductImage
-}
-
-// ProductImageURLs holds the image URLs returned by WhatsApp for a product.
-type ProductImageURLs struct {
-	Requested string
-	Original  string
-}
-
-// Product represents a catalog product parsed from a WhatsApp response.
-type Product struct {
-	ID           string
-	Name         string
-	Description  string
-	RetailerID   string
-	URL          string
-	Price        int64
-	Currency     string
-	IsHidden     bool
-	ReviewStatus string
-	ImageURLs    ProductImageURLs
-}
-
 // CreateProductBusiness creates a new product in the business catalog.
-func (cli *Client) CreateProductBusiness(ctx context.Context, create ProductCreate) (*Product, error) {
+func (cli *Client) CreateProductBusiness(ctx context.Context, create types.ProductCreate) (*types.Product, error) {
 	create, err := cli.uploadingNecessaryImagesOfProduct(ctx, create)
 	if err != nil {
 		return nil, err
@@ -279,17 +238,154 @@ func (cli *Client) CreateProductBusiness(ctx context.Context, create ProductCrea
 	return parseProductNode(&productNode), nil
 }
 
+// DeleteProductBusiness deletes the given products from the business catalog and
+// returns the number of products that were actually deleted.
+func (cli *Client) DeleteProductBusiness(ctx context.Context, productIDs []string) (int, error) {
+	productNodes := make([]waBinary.Node, 0, len(productIDs))
+	for _, id := range productIDs {
+		productNodes = append(productNodes, waBinary.Node{
+			Tag: "product",
+			Content: []waBinary.Node{{
+				Tag:     "id",
+				Content: []byte(id),
+			}},
+		})
+	}
+
+	result, err := cli.sendIQ(ctx, infoQuery{
+		Type:      iqSet,
+		To:        types.ServerJID,
+		Namespace: "w:biz:catalog",
+		Content: []waBinary.Node{{
+			Tag:     "product_catalog_delete",
+			Attrs:   waBinary.Attrs{"v": "1"},
+			Content: productNodes,
+		}},
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	deleteNode := result.GetChildByTag("product_catalog_delete")
+	return deleteNode.AttrGetter().OptionalInt("deleted_count"), nil
+}
+
+// UpdateProductBusiness updates an existing product in the business catalog.
+func (cli *Client) UpdateProductBusiness(ctx context.Context, productID string, update types.ProductCreate) (*types.Product, error) {
+	update, err := cli.uploadingNecessaryImagesOfProduct(ctx, update)
+	if err != nil {
+		return nil, err
+	}
+
+	editNode := toProductNode(productID, update)
+
+	result, err := cli.sendIQ(ctx, infoQuery{
+		Type:      iqSet,
+		To:        types.ServerJID,
+		Namespace: "w:biz:catalog",
+		Content: []waBinary.Node{{
+			Tag:   "product_catalog_edit",
+			Attrs: waBinary.Attrs{"v": "1"},
+			Content: []waBinary.Node{
+				editNode,
+				{Tag: "width", Content: []byte("100")},
+				{Tag: "height", Content: []byte("100")},
+			},
+		}},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	editResultNode := result.GetChildByTag("product_catalog_edit")
+	productNode := editResultNode.GetChildByTag("product")
+	return parseProductNode(&productNode), nil
+}
+
+// GetCollectionsBusiness fetches the catalog collections of the given business.
+//
+// If jid is empty, the logged-in account's own JID is used. A limit of <= 0 defaults to 51.
+func (cli *Client) GetCollectionsBusiness(ctx context.Context, jid types.JID, limit int) ([]types.Collection, error) {
+	if jid.IsEmpty() {
+		if cli.Store.ID == nil {
+			return nil, ErrNotLoggedIn
+		}
+		jid = cli.Store.ID.ToNonAD()
+	}
+
+	if limit <= 0 {
+		limit = 51
+	}
+	limitStr := strconv.Itoa(limit)
+
+	result, err := cli.sendIQ(ctx, infoQuery{
+		Type:      iqGet,
+		To:        types.ServerJID,
+		Namespace: "w:biz:catalog",
+		Content: []waBinary.Node{{
+			Tag:   "collections",
+			Attrs: waBinary.Attrs{"biz_jid": jid, "smax_id": "35"},
+			Content: []waBinary.Node{
+				{Tag: "collection_limit", Content: []byte(limitStr)},
+				{Tag: "item_limit", Content: []byte(limitStr)},
+				{Tag: "width", Content: []byte("100")},
+				{Tag: "height", Content: []byte("100")},
+			},
+		}},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return parseCollectionsNode(result), nil
+}
+
+// parseCollectionsNode parses a <collections> response into a list of collections.
+func parseCollectionsNode(node *waBinary.Node) []types.Collection {
+	if node == nil {
+		return nil
+	}
+	collectionsNode := node.GetChildByTag("collections")
+	collectionNodes := collectionsNode.GetChildrenByTag("collection")
+	collections := make([]types.Collection, 0, len(collectionNodes))
+	for _, collectionNode := range collectionNodes {
+		productNodes := collectionNode.GetChildrenByTag("product")
+		products := make([]types.Product, 0, len(productNodes))
+		for _, productNode := range productNodes {
+			if parsed := parseProductNode(&productNode); parsed != nil {
+				products = append(products, *parsed)
+			}
+		}
+		collections = append(collections, types.Collection{
+			ID:       nodeStringContent(collectionNode.GetChildByTag("id")),
+			Name:     nodeStringContent(collectionNode.GetChildByTag("name")),
+			Products: products,
+			Status:   parseStatusInfo(collectionNode),
+		})
+	}
+	return collections
+}
+
+// parseStatusInfo parses the <status_info> child of the given node.
+func parseStatusInfo(node waBinary.Node) types.CatalogStatus {
+	statusInfoNode := node.GetChildByTag("status_info")
+	return types.CatalogStatus{
+		Status:    nodeStringContent(statusInfoNode.GetChildByTag("status")),
+		CanAppeal: nodeStringContent(statusInfoNode.GetChildByTag("can_appeal")) == "true",
+	}
+}
+
 // uploadingNecessaryImagesOfProduct uploads any product images that aren't already
 // hosted on WhatsApp's servers, replacing them with the resulting WhatsApp URLs.
-func (cli *Client) uploadingNecessaryImagesOfProduct(ctx context.Context, product ProductCreate) (ProductCreate, error) {
+func (cli *Client) uploadingNecessaryImagesOfProduct(ctx context.Context, product types.ProductCreate) (types.ProductCreate, error) {
 	if len(product.Images) == 0 {
 		return product, nil
 	}
 
-	uploaded := make([]ProductImage, len(product.Images))
+	uploaded := make([]types.ProductImage, len(product.Images))
 	for i, img := range product.Images {
 		if img.URL != "" && strings.Contains(img.URL, ".whatsapp.net") {
-			uploaded[i] = ProductImage{URL: img.URL}
+			uploaded[i] = types.ProductImage{URL: img.URL}
 			continue
 		}
 		if len(img.Data) == 0 {
@@ -303,7 +399,7 @@ func (cli *Client) uploadingNecessaryImagesOfProduct(ctx context.Context, produc
 		if url == "" {
 			url = "https://mmg.whatsapp.net" + resp.DirectPath
 		}
-		uploaded[i] = ProductImage{URL: url}
+		uploaded[i] = types.ProductImage{URL: url}
 	}
 	product.Images = uploaded
 	return product, nil
@@ -311,7 +407,7 @@ func (cli *Client) uploadingNecessaryImagesOfProduct(ctx context.Context, produc
 
 // toProductNode builds the <product> binary node for a catalog create/update request.
 // When productID is empty (creation), no <id> child is added.
-func toProductNode(productID string, product ProductCreate) waBinary.Node {
+func toProductNode(productID string, product types.ProductCreate) waBinary.Node {
 	attrs := waBinary.Attrs{}
 	var content []waBinary.Node
 
@@ -352,7 +448,7 @@ func toProductNode(productID string, product ProductCreate) waBinary.Node {
 }
 
 // parseProductNode parses a <product> binary node into a Product.
-func parseProductNode(productNode *waBinary.Node) *Product {
+func parseProductNode(productNode *waBinary.Node) *types.Product {
 	if productNode == nil {
 		return nil
 	}
@@ -363,7 +459,7 @@ func parseProductNode(productNode *waBinary.Node) *Product {
 
 	price, _ := strconv.ParseInt(nodeStringContent(productNode.GetChildByTag("price")), 10, 64)
 
-	return &Product{
+	return &types.Product{
 		ID:           nodeStringContent(productNode.GetChildByTag("id")),
 		Name:         nodeStringContent(productNode.GetChildByTag("name")),
 		Description:  nodeStringContent(productNode.GetChildByTag("description")),
@@ -373,7 +469,7 @@ func parseProductNode(productNode *waBinary.Node) *Product {
 		Currency:     nodeStringContent(productNode.GetChildByTag("currency")),
 		IsHidden:     productNode.AttrGetter().OptionalString("is_hidden") == "true",
 		ReviewStatus: nodeStringContent(statusInfoNode.GetChildByTag("status")),
-		ImageURLs: ProductImageURLs{
+		ImageURLs: types.ProductImageURLs{
 			Requested: nodeStringContent(imageNode.GetChildByTag("request_image_url")),
 			Original:  nodeStringContent(imageNode.GetChildByTag("original_image_url")),
 		},
