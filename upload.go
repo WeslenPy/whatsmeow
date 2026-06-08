@@ -37,6 +37,15 @@ type UploadResponse struct {
 	FileEncSHA256 []byte `json:"-"`
 	FileSHA256    []byte `json:"-"`
 	FileLength    uint64 `json:"-"`
+
+	FBID      string `json:"fbid"`
+	MetaHMAC  string `json:"meta_hmac"`
+	Timestamp int64  `json:"ts"`
+
+	// RawResponse contem o corpo JSON cru retornado pelo servidor de upload.
+	// Util para inspecionar campos que nao estao mapeados na struct (ex.: a
+	// resposta de biz-cover-photo com fbid/meta_hmac/ts).
+	RawResponse []byte `json:"-"`
 }
 
 // Upload uploads the given attachment to WhatsApp servers.
@@ -90,7 +99,17 @@ func (cli *Client) Upload(ctx context.Context, plaintext []byte, appInfo MediaTy
 	dataHash := sha256.Sum256(dataToUpload)
 	resp.FileEncSHA256 = dataHash[:]
 
+	cli.Log.Debugf("Uploading media: type=%s plaintextLen=%d encLen=%d fileSHA256=%s fileEncSHA256=%s",
+		appInfo, resp.FileLength, len(dataToUpload),
+		base64.StdEncoding.EncodeToString(resp.FileSHA256),
+		base64.StdEncoding.EncodeToString(resp.FileEncSHA256))
+
 	err = cli.rawUpload(ctx, bytes.NewReader(dataToUpload), uint64(len(dataToUpload)), resp.FileEncSHA256, appInfo, false, &resp)
+	if err != nil {
+		cli.Log.Errorf("Media upload failed (type=%s): %v", appInfo, err)
+		return
+	}
+	cli.Log.Debugf("Media upload response: %+v", resp)
 	return
 }
 
@@ -189,6 +208,18 @@ func (cli *Client) UploadNewsletterReader(ctx context.Context, data io.ReadSeeke
 	return
 }
 
+// UploadProductCatalogImage uploads an image to be used in a business catalog product.
+//
+// Unlike [Upload], catalog images are uploaded unencrypted (similar to newsletter media),
+// and the resulting URL/DirectPath in the response can be used directly in a product node.
+func (cli *Client) UploadProductCatalogImage(ctx context.Context, data []byte) (resp UploadResponse, err error) {
+	resp.FileLength = uint64(len(data))
+	hash := sha256.Sum256(data)
+	resp.FileSHA256 = hash[:]
+	err = cli.rawUpload(ctx, bytes.NewReader(data), resp.FileLength, resp.FileSHA256, MediaProductCatalogImage, false, &resp)
+	return
+}
+
 func (cli *Client) rawUpload(ctx context.Context, dataToUpload io.Reader, uploadSize uint64, fileHash []byte, appInfo MediaType, newsletter bool, resp *UploadResponse) error {
 	mediaConn, err := cli.refreshMediaConn(ctx, false)
 	if err != nil {
@@ -202,6 +233,20 @@ func (cli *Client) rawUpload(ctx context.Context, dataToUpload io.Reader, upload
 	}
 	mmsType := mediaTypeToMMSType[appInfo]
 	uploadPrefix := "mms"
+
+	// Product catalog images are uploaded unencrypted to the /product/image endpoint.
+	if appInfo == MediaProductCatalogImage {
+		uploadPrefix = "product"
+	}
+
+	if appInfo == MediaBizCoverPhoto {
+		appInfo = MediaImage
+	}
+
+	if mmsType == "biz-cover-photo" {
+		uploadPrefix = "pps"
+	}
+
 	if cli.MessengerConfig != nil {
 		uploadPrefix = "wa-msgr/mms"
 		// Messenger upload only allows voice messages, not audio files
@@ -228,6 +273,8 @@ func (cli *Client) rawUpload(ctx context.Context, dataToUpload io.Reader, upload
 		RawQuery: q.Encode(),
 	}
 
+	cli.Log.Debugf("Upload URL: %s", uploadURL.String())
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadURL.String(), dataToUpload)
 	if err != nil {
 		return fmt.Errorf("failed to prepare request: %w", err)
@@ -235,15 +282,29 @@ func (cli *Client) rawUpload(ctx context.Context, dataToUpload io.Reader, upload
 
 	req.ContentLength = int64(uploadSize)
 	req.Header.Set("Origin", socket.Origin)
+	req.Header.Set("Content-Type", "application/octet-stream")
 	req.Header.Set("Referer", socket.Origin+"/")
 
 	httpResp, err := cli.mediaHTTP.Do(req)
 	if err != nil {
 		err = fmt.Errorf("failed to execute request: %w", err)
 	} else if httpResp.StatusCode != http.StatusOK {
+		// Le o corpo mesmo em erro para logar a mensagem retornada pelo servidor.
+		body, _ := io.ReadAll(httpResp.Body)
+		resp.RawResponse = body
+		cli.Log.Debugf("Upload response (status %d): %s", httpResp.StatusCode, body)
 		err = fmt.Errorf("upload failed with status code %d", httpResp.StatusCode)
-	} else if err = json.NewDecoder(httpResp.Body).Decode(&resp); err != nil {
-		err = fmt.Errorf("failed to parse upload response: %w", err)
+	} else {
+		var body []byte
+		if body, err = io.ReadAll(httpResp.Body); err != nil {
+			err = fmt.Errorf("failed to read upload response: %w", err)
+		} else {
+			resp.RawResponse = body
+			cli.Log.Debugf("Upload response JSON: %s", body)
+			if err = json.Unmarshal(body, &resp); err != nil {
+				err = fmt.Errorf("failed to parse upload response: %w", err)
+			}
+		}
 	}
 	if httpResp != nil {
 		_ = httpResp.Body.Close()

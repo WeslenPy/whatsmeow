@@ -49,6 +49,9 @@ const (
 
 	MediaStickerPack   MediaType = "WhatsApp Sticker Pack Keys"
 	MediaLinkThumbnail MediaType = "WhatsApp Link Thumbnail Keys"
+	MediaBizCoverPhoto MediaType = "WhatsApp Biz Cover Photo Keys"
+
+	MediaProductCatalogImage MediaType = "WhatsApp Product Catalog Image Keys"
 )
 
 // DownloadableMessage represents a protobuf message that contains attachment info.
@@ -129,6 +132,9 @@ var mediaTypeToMMSType = map[MediaType]string{
 
 	MediaStickerPack:   "sticker-pack",
 	MediaLinkThumbnail: "thumbnail-link",
+	MediaBizCoverPhoto: "biz-cover-photo",
+
+	MediaProductCatalogImage: "image",
 }
 
 // DownloadAny loops through the downloadable parts of the given message and downloads the first non-nil item.
@@ -324,6 +330,10 @@ func (cli *Client) downloadAndDecrypt(
 }
 
 func getMediaKeys(mediaKey []byte, appInfo MediaType) (iv, cipherKey, macKey, refKey []byte) {
+	// A foto de capa do negocio usa as mesmas chaves de imagem para a derivacao HKDF.
+	if appInfo == MediaBizCoverPhoto {
+		appInfo = MediaImage
+	}
 	mediaKeyExpanded := hkdfutil.SHA256(mediaKey, nil, []byte(appInfo), 112)
 	return mediaKeyExpanded[:16], mediaKeyExpanded[16:48], mediaKeyExpanded[48:80], mediaKeyExpanded[80:]
 }

@@ -1,0 +1,7 @@
+/auth
+/data
+
+/test_account
+
+*.exe
+*.db
