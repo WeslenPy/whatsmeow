@@ -204,11 +204,30 @@ type DeviceUserInfo struct {
 	PushName     string
 }
 
+// Offering contains the offerings of a WhatsApp business.
+type BizIdentityInfo struct {
+	PhoneNumber     string
+	Type            string
+	DisplayName     string
+	VerifiedLevel   string
+	Serial          uint64
+	IsSigned        bool
+	Revoked         bool
+	MemberSinceTime uint64
+}
+
 // BusinessProfile contains the profile information of a WhatsApp business.
 type BusinessProfile struct {
 	JID                   JID
 	Address               string
 	Email                 string
+	Description           string
+	Latitude              float64
+	Longitude             float64
+	CoverPhoto            string
+	MemberSinceText       string
+	AutomatedType         string
+	BizIdentityInfo       *BizIdentityInfo
 	Categories            []Category
 	ProfileOptions        map[string]string
 	BusinessHoursTimeZone string

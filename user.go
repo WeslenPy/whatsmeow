@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"google.golang.org/protobuf/proto"
@@ -368,54 +369,70 @@ func (cli *Client) parseBusinessProfile(node *waBinary.Node) (*types.BusinessPro
 	if !ok {
 		return nil, errors.New("missing jid in business profile")
 	}
-	address, _ := profileNode.GetChildByTag("address").Content.([]byte)
-	email, _ := profileNode.GetChildByTag("email").Content.([]byte)
+
 	businessHour := profileNode.GetChildByTag("business_hours")
-	businessHourTimezone := businessHour.AttrGetter().String("timezone")
-	businessHoursConfigs := businessHour.GetChildren()
-	businessHours := make([]types.BusinessHoursConfig, 0)
-	for _, config := range businessHoursConfigs {
-		if config.Tag != "business_hours_config" {
-			continue
-		}
-		dow := config.AttrGetter().String("day_of_week")
-		mode := config.AttrGetter().String("mode")
-		openTime := config.AttrGetter().String("open_time")
-		closeTime := config.AttrGetter().String("close_time")
+	businessHours := make([]types.BusinessHoursConfig, 0, len(businessHour.GetChildren()))
+	for _, config := range businessHour.GetChildrenByTag("business_hours_config") {
+		ag := config.AttrGetter()
 		businessHours = append(businessHours, types.BusinessHoursConfig{
-			DayOfWeek: dow,
-			Mode:      mode,
-			OpenTime:  openTime,
-			CloseTime: closeTime,
+			DayOfWeek: ag.String("day_of_week"),
+			Mode:      ag.String("mode"),
+			OpenTime:  ag.OptionalString("open_time"),
+			CloseTime: ag.OptionalString("close_time"),
 		})
 	}
-	categoriesNode := profileNode.GetChildByTag("categories")
+
 	categories := make([]types.Category, 0)
-	for _, category := range categoriesNode.GetChildren() {
-		if category.Tag != "category" {
-			continue
-		}
-		id := category.AttrGetter().String("id")
-		name, _ := category.Content.([]byte)
+	categoriesNode := profileNode.GetChildByTag("categories")
+	for _, category := range categoriesNode.GetChildrenByTag("category") {
 		categories = append(categories, types.Category{
-			ID:   id,
-			Name: string(name),
+			ID:   category.AttrGetter().String("id"),
+			Name: nodeStringContent(category),
 		})
 	}
-	profileOptionsNode := profileNode.GetChildByTag("profile_options")
+
 	profileOptions := make(map[string]string)
+	profileOptionsNode := profileNode.GetChildByTag("profile_options")
 	for _, option := range profileOptionsNode.GetChildren() {
-		optValueBytes, _ := option.Content.([]byte)
-		profileOptions[option.Tag] = string(optValueBytes)
-		// TODO parse bot_fields
+		if content, ok := option.Content.([]byte); ok {
+			profileOptions[option.Tag] = string(content)
+		}
 	}
+
+	latitude, _ := strconv.ParseFloat(nodeStringContent(profileNode.GetChildByTag("latitude")), 64)
+	longitude, _ := strconv.ParseFloat(nodeStringContent(profileNode.GetChildByTag("longitude")), 64)
+	memberSinceTS, _ := strconv.ParseUint(nodeStringContent(profileNode.GetChildByTag("member_since_ts")), 10, 64)
+
+	var bizIdentity *types.BizIdentityInfo
+	if bizNode, ok := profileNode.GetOptionalChildByTag("biz_identity_info"); ok {
+		ag := bizNode.AttrGetter()
+		serial, _ := strconv.ParseUint(ag.OptionalString("serial"), 10, 64)
+		bizIdentity = &types.BizIdentityInfo{
+			PhoneNumber:     ag.OptionalString("phone_number"),
+			Type:            ag.OptionalString("type"),
+			DisplayName:     ag.OptionalString("display_name"),
+			VerifiedLevel:   ag.OptionalString("vlevel"),
+			Serial:          serial,
+			IsSigned:        ag.OptionalString("is_signed") == "true",
+			Revoked:         ag.OptionalString("revoked") == "true",
+			MemberSinceTime: memberSinceTS,
+		}
+	}
+
 	return &types.BusinessProfile{
 		JID:                   jid,
-		Email:                 string(email),
-		Address:               string(address),
+		Address:               nodeStringContent(profileNode.GetChildByTag("address")),
+		Email:                 nodeStringContent(profileNode.GetChildByTag("email")),
+		Description:           nodeStringContent(profileNode.GetChildByTag("description")),
+		Latitude:              latitude,
+		Longitude:             longitude,
+		CoverPhoto:            nodeStringContent(profileNode.GetChildByTag("cover_photo")),
+		MemberSinceText:       nodeStringContent(profileNode.GetChildByTag("member_since_text")),
+		AutomatedType:         nodeStringContent(profileNode.GetChildByTag("automated_type")),
+		BizIdentityInfo:       bizIdentity,
 		Categories:            categories,
 		ProfileOptions:        profileOptions,
-		BusinessHoursTimeZone: businessHourTimezone,
+		BusinessHoursTimeZone: businessHour.AttrGetter().OptionalString("timezone"),
 		BusinessHours:         businessHours,
 	}, nil
 }
