@@ -90,11 +90,6 @@ func (cli *Client) SetAddressBusiness(ctx context.Context, address string) (*waB
 	return cli.updateBusinessProfile(ctx, "address", address)
 }
 
-// SetBusinessHoursBusiness updates the business operating hours.
-//
-// For days using the "specific_hours" mode, OpenTime and CloseTime (in minutes
-// since midnight) are included; other modes (e.g. "open_24h", "appointment_only")
-// only carry the day and mode.
 func (cli *Client) SetBusinessHoursBusiness(ctx context.Context, timezone string, businessHours []types.BusinessHoursConfig) (*waBinary.Node, error) {
 	configNodes := make([]waBinary.Node, 0, len(businessHours))
 	for _, cfg := range businessHours {
