@@ -974,3 +974,22 @@ func (cli *Client) UpdateBlocklist(ctx context.Context, jid types.JID, action ev
 	}
 	return cli.parseBlocklist(&list), err
 }
+
+// deviceUserInfoGetter is implemented by device containers that support querying
+// the per-device user info (platform, business name, push name) from the database.
+type deviceUserInfoGetter interface {
+	GetDeviceUserInfo(ctx context.Context, jid types.JID) (*types.DeviceUserInfo, error)
+}
+
+// GetUserInfoByDevice fetches the platform, business name and push name of the
+// currently logged-in device directly from the devices table in the database.
+func (cli *Client) GetUserInfoByDevice(ctx context.Context) (*types.DeviceUserInfo, error) {
+	if cli.Store.ID == nil {
+		return nil, ErrNotLoggedIn
+	}
+	getter, ok := cli.Store.Container.(deviceUserInfoGetter)
+	if !ok {
+		return nil, errors.New("the configured device container does not support querying device user info")
+	}
+	return getter.GetDeviceUserInfo(ctx, *cli.Store.ID)
+}

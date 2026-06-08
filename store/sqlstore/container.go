@@ -184,6 +184,25 @@ func (c *Container) GetFirstDevice(ctx context.Context) (*store.Device, error) {
 	}
 }
 
+const getDeviceUserInfoQuery = `
+SELECT platform, business_name, push_name FROM whatsmeow_device WHERE jid=$1
+`
+
+// GetDeviceUserInfo fetches the platform, business name and push name of the
+// device with the given JID directly from the devices table.
+//
+// If the device is not found, nil is returned instead.
+func (c *Container) GetDeviceUserInfo(ctx context.Context, jid types.JID) (*types.DeviceUserInfo, error) {
+	var info types.DeviceUserInfo
+	err := c.db.QueryRow(ctx, getDeviceUserInfoQuery, jid).Scan(&info.Platform, &info.BusinessName, &info.PushName)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to query device user info: %w", err)
+	}
+	return &info, nil
+}
+
 // GetDevice finds the device with the specified JID in the database.
 //
 // If the device is not found, nil is returned instead.

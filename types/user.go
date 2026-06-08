@@ -197,6 +197,13 @@ type Category struct {
 	Name string
 }
 
+// DeviceUserInfo contains the per-device user info stored in the devices table.
+type DeviceUserInfo struct {
+	Platform     string
+	BusinessName string
+	PushName     string
+}
+
 // BusinessProfile contains the profile information of a WhatsApp business.
 type BusinessProfile struct {
 	JID                   JID
