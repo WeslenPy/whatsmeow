@@ -75,3 +75,29 @@ type CallReject struct {
 type UnknownCallEvent struct {
 	Node *waBinary.Node
 }
+
+// CallOutgoing is emitted when an outbound call offer has been sent.
+type CallOutgoing struct {
+	types.BasicCallMeta
+	PeerJID types.JID
+	Data    *waBinary.Node
+}
+
+// CallRinging is emitted when the peer's client sends preaccept for an outbound call.
+type CallRinging struct {
+	types.BasicCallMeta
+	Data *waBinary.Node
+}
+
+// CallSignalingConnected is emitted when the peer accepts an outbound call at the signaling layer.
+// Audio media is not established until a future media bridge phase.
+type CallSignalingConnected struct {
+	types.BasicCallMeta
+	Data *waBinary.Node
+}
+
+// CallEnded is emitted when an outbound call session ends.
+type CallEnded struct {
+	types.BasicCallMeta
+	Reason string
+}

@@ -1,0 +1,15 @@
+{
+  "name": "whatsmeow-voip-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Node.js WASM bridge for whatsmeow VoIP (stdio JSON IPC)",
+  "scripts": {
+    "setup": "node setup.mjs",
+    "start": "node bridge.mjs",
+    "start:debug": "node --input-type=module -e \"process.env.VOIP_BRIDGE_DEBUG='1'; await import('./bridge.mjs')\""
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

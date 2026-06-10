@@ -30,6 +30,7 @@ import (
 
 	"go.mau.fi/whatsmeow/appstate"
 	waBinary "go.mau.fi/whatsmeow/binary"
+	"go.mau.fi/whatsmeow/call"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/proto/waWa6"
 	"go.mau.fi/whatsmeow/proto/waWeb"
@@ -136,6 +137,8 @@ type Client struct {
 	lastTCTokenSenderTSCleanup time.Time
 	tcTokenDBPruneLock         sync.Mutex
 	lastTCTokenDBPrune         time.Time
+
+	callManager *call.Manager
 
 	privacySettingsCache atomic.Value
 

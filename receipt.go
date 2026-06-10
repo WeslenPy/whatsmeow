@@ -15,6 +15,7 @@ import (
 	"go.mau.fi/util/ptr"
 
 	waBinary "go.mau.fi/whatsmeow/binary"
+	"go.mau.fi/whatsmeow/call"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
@@ -22,6 +23,13 @@ import (
 func (cli *Client) handleReceipt(ctx context.Context, node *waBinary.Node) {
 	var cancelled bool
 	defer cli.maybeDeferredAck(ctx, node)(&cancelled)
+	if cli.callManager != nil {
+		if callID := call.ExtractReceiptCallID(node); callID != "" {
+			if cli.callManager.HandleReceipt(ctx, node, callID) {
+				return
+			}
+		}
+	}
 	receipt, err := cli.parseReceipt(node)
 	if err != nil {
 		cli.Log.Warnf("Failed to parse receipt: %v", err)
