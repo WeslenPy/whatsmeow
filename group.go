@@ -1067,3 +1067,19 @@ func (cli *Client) SetGroupDescription(ctx context.Context, jid types.JID, descr
 	_, err := cli.sendGroupIQ(ctx, iqSet, jid, content)
 	return err
 }
+
+func (cli *Client) setGroupMemberLinkMode(ctx context.Context, jid types.JID, linkMode types.GroupMemberLinkMode) error {
+	response, err := cli.sendMexIQ(ctx, querySetGroupMemberLinkMode, map[string]any{
+		"input": map[string]any{
+			"member_link_mode": linkMode,
+		},
+		"groupJid": jid.String(),
+	})
+	if err != nil {
+		return err
+	}
+	if response == nil {
+		return fmt.Errorf("mex unexpected null response for set group member link mode")
+	}
+	return nil
+}

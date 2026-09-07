@@ -166,3 +166,11 @@ type GroupParticipantRequest struct {
 	JID         JID
 	RequestedAt time.Time
 }
+
+
+type GroupMemberLinkMode string
+
+const (
+	GroupMemberLinkModeAdminLink     GroupMemberLinkMode = "ADMIN_LINK"
+	GroupMemberLinkModeAllMemberLink GroupMemberLinkMode = "ALL_MEMBER_LINK"
+)
